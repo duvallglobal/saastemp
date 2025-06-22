@@ -92,6 +92,45 @@ export const contentStatusValidator = v.union(
 );
 export type ContentStatus = Infer<typeof contentStatusValidator>;
 
+// Define service types
+export const SERVICE_TYPES = {
+  ONLYFANS: "onlyfans",
+  RENTMEN: "rentmen",
+  BOTH: "both",
+} as const;
+export const serviceTypeValidator = v.union(
+  v.literal(SERVICE_TYPES.ONLYFANS),
+  v.literal(SERVICE_TYPES.RENTMEN),
+  v.literal(SERVICE_TYPES.BOTH),
+);
+export type ServiceType = Infer<typeof serviceTypeValidator>;
+
+// Define facial visibility preferences
+export const FACIAL_VISIBILITY = {
+  FACE_OKAY: "face-okay",
+  NO_FACE: "no-face",
+  MASKED_FACE: "masked-face",
+  OTHER: "other",
+} as const;
+export const facialVisibilityValidator = v.union(
+  v.literal(FACIAL_VISIBILITY.FACE_OKAY),
+  v.literal(FACIAL_VISIBILITY.NO_FACE),
+  v.literal(FACIAL_VISIBILITY.MASKED_FACE),
+  v.literal(FACIAL_VISIBILITY.OTHER),
+);
+export type FacialVisibility = Infer<typeof facialVisibilityValidator>;
+
+// Define appointment types
+export const APPOINTMENT_TYPES = {
+  INCALL: "incall",
+  OUTCALL: "outcall",
+} as const;
+export const appointmentTypeValidator = v.union(
+  v.literal(APPOINTMENT_TYPES.INCALL),
+  v.literal(APPOINTMENT_TYPES.OUTCALL),
+);
+export type AppointmentType = Infer<typeof appointmentTypeValidator>;
+
 const priceValidator = v.object({
   stripeId: v.string(),
   amount: v.number(),
@@ -118,6 +157,8 @@ const schema = defineSchema({
     role: v.optional(roleValidator),
     // Add onboarding status field
     onboardingStatus: v.optional(onboardingStatusValidator),
+    // Add service type field
+    serviceType: v.optional(serviceTypeValidator),
   })
     .index("email", ["email"])
     .index("customerId", ["customerId"])
@@ -127,18 +168,31 @@ const schema = defineSchema({
   clientProfiles: defineTable({
     userId: v.id("users"),
     // Basic information
-    fullName: v.optional(v.string()),
+    legalFullName: v.string(),
+    preferredName: v.optional(v.string()),
+    dateOfBirth: v.string(), // For age verification
     address: v.optional(v.string()),
     city: v.optional(v.string()),
     state: v.optional(v.string()),
     zipCode: v.optional(v.string()),
     country: v.optional(v.string()),
-    phone: v.optional(v.string()),
+    phone: v.string(),
+    // Service-specific information
+    serviceType: serviceTypeValidator,
+    // Identity verification
+    frontIdImageId: v.optional(v.id("_storage")),
+    backIdImageId: v.optional(v.id("_storage")),
+    selfieWithIdImageId: v.optional(v.id("_storage")),
+    // Privacy & Persona
+    hasOnlinePersona: v.boolean(),
+    stageNames: v.optional(v.string()),
+    facialVisibility: facialVisibilityValidator,
+    privacyConcerns: v.optional(v.string()),
+    // Account access
+    accountCreationOption: v.optional(v.string()),
     // Business information
     businessName: v.optional(v.string()),
     businessDescription: v.optional(v.string()),
-    // Preferences
-    preferredContactMethod: v.optional(v.string()),
     // Onboarding data
     onboardingCompletedAt: v.optional(v.number()),
     onboardingApprovedAt: v.optional(v.number()),
@@ -147,7 +201,8 @@ const schema = defineSchema({
     uniqueIdentifier: v.string(),
   })
     .index("userId", ["userId"])
-    .index("uniqueIdentifier", ["uniqueIdentifier"]),
+    .index("uniqueIdentifier", ["uniqueIdentifier"])
+    .index("serviceType", ["serviceType"]),
   
   // Appointments for scheduling between admin and clients
   appointments: defineTable({
@@ -156,11 +211,14 @@ const schema = defineSchema({
     // Client the appointment is for
     clientId: v.id("users"),
     // Appointment details
-    title: v.string(),
-    description: v.optional(v.string()),
-    startTime: v.number(),
-    endTime: v.number(),
+    appointmentType: appointmentTypeValidator,
     location: v.optional(v.string()),
+    date: v.string(),
+    startTime: v.string(),
+    duration: v.string(), // Could be "1", "2", "3", "4", "travel", "overnight", "other"
+    durationDetails: v.optional(v.string()), // For "other" duration
+    services: v.string(), // Services to be provided
+    rate: v.number(), // Agreed rate/price
     // Status tracking
     status: appointmentStatusValidator,
     // Response tracking

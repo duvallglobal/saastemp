@@ -1,66 +1,96 @@
-import { useQuery } from "@tanstack/react-query";
-import { convexQuery } from "@convex-dev/react-query";
-import { api } from "@cvx/_generated/api";
-import { ROLES } from "@cvx/schema";
 import { User } from "~/types";
+import { ROLES, ONBOARDING_STATUS, SERVICE_TYPES } from "@cvx/schema";
 
 /**
- * Hook to get the current user with role information
+ * Check if a user is an admin
  */
-export function useCurrentUser() {
-  return useQuery(convexQuery(api.app.getCurrentUser, {}));
-}
-
-/**
- * Check if the user has admin role
- */
-export function isAdmin(user: User | null | undefined): boolean {
+export function isAdmin(user: User | undefined): boolean {
   if (!user) return false;
   return user.role === ROLES.ADMIN;
 }
 
 /**
- * Check if the user has client role
+ * Check if a user is a client
  */
-export function isClient(user: User | null | undefined): boolean {
+export function isClient(user: User | undefined): boolean {
   if (!user) return false;
   return user.role === ROLES.CLIENT;
 }
 
 /**
- * Check if the user has completed onboarding
+ * Check if a user needs to complete onboarding
  */
-export function hasCompletedOnboarding(user: User | null | undefined): boolean {
+export function needsOnboarding(user: User | undefined): boolean {
   if (!user) return false;
-  return user.onboardingStatus === "completed" || user.onboardingStatus === "approved";
+  return (
+    user.role === ROLES.CLIENT &&
+    (!user.onboardingStatus ||
+      user.onboardingStatus === ONBOARDING_STATUS.NOT_STARTED ||
+      user.onboardingStatus === ONBOARDING_STATUS.IN_PROGRESS)
+  );
 }
 
 /**
- * Check if the user needs to be redirected to onboarding
+ * Check if a user has completed onboarding but is waiting for approval
  */
-export function needsOnboarding(user: User | null | undefined): boolean {
+export function isOnboardingPending(user: User | undefined): boolean {
   if (!user) return false;
-  if (isAdmin(user)) return false; // Admins don't need onboarding
-  return !hasCompletedOnboarding(user);
+  return (
+    user.role === ROLES.CLIENT &&
+    user.onboardingStatus === ONBOARDING_STATUS.COMPLETED
+  );
+}
+
+/**
+ * Check if a user has approved onboarding
+ */
+export function isOnboardingApproved(user: User | undefined): boolean {
+  if (!user) return false;
+  return (
+    user.role === ROLES.CLIENT &&
+    user.onboardingStatus === ONBOARDING_STATUS.APPROVED
+  );
+}
+
+/**
+ * Check if a user is an OnlyFans client
+ */
+export function isOnlyFansClient(user: User | undefined): boolean {
+  if (!user) return false;
+  return (
+    user.role === ROLES.CLIENT &&
+    (user.serviceType === SERVICE_TYPES.ONLYFANS || user.serviceType === SERVICE_TYPES.BOTH)
+  );
+}
+
+/**
+ * Check if a user is a Rent.Men client
+ */
+export function isRentMenClient(user: User | undefined): boolean {
+  if (!user) return false;
+  return (
+    user.role === ROLES.CLIENT &&
+    (user.serviceType === SERVICE_TYPES.RENTMEN || user.serviceType === SERVICE_TYPES.BOTH)
+  );
 }
 
 /**
  * Get the appropriate redirect path based on user role and onboarding status
  */
-export function getRedirectPath(user: User | null | undefined): string {
+export function getRedirectPath(user: User | undefined): string {
   if (!user) return "/login";
   
-  // If user is an admin, redirect to admin dashboard
   if (isAdmin(user)) {
-    return "/_app/_auth/admin";
+    return "/_app/_auth/admin/";
   }
   
-  // If user is a client who needs onboarding, redirect to onboarding
-  if (isClient(user) && needsOnboarding(user)) {
-    return "/_app/_auth/client/onboarding";
+  if (isClient(user)) {
+    if (needsOnboarding(user)) {
+      return "/_app/_auth/client/onboarding/";
+    }
+    return "/_app/_auth/client/";
   }
   
-  // Otherwise, redirect to client dashboard
-  return "/_app/_auth/client";
+  return "/login";
 }
 

@@ -1,7 +1,16 @@
 import { internal } from "@cvx/_generated/api";
 import { mutation, query } from "@cvx/_generated/server";
 import { auth } from "@cvx/auth";
-import { currencyValidator, PLANS, ROLES, ONBOARDING_STATUS } from "@cvx/schema";
+import { 
+  currencyValidator, 
+  PLANS, 
+  ROLES, 
+  ONBOARDING_STATUS, 
+  APPOINTMENT_STATUS,
+  appointmentTypeValidator,
+  serviceTypeValidator,
+  facialVisibilityValidator
+} from "@cvx/schema";
 import { asyncMap } from "convex-helpers";
 import { v } from "convex/values";
 import { User } from "~/types";
@@ -100,21 +109,125 @@ export const setUserRole = mutation({
   },
 });
 
+export const createAppointment = mutation({
+  args: {
+    clientId: v.id("users"),
+    appointmentType: appointmentTypeValidator,
+    location: v.optional(v.string()),
+    date: v.string(),
+    startTime: v.string(),
+    duration: v.string(),
+    durationDetails: v.optional(v.string()),
+    services: v.string(),
+    rate: v.number(),
+  },
+  handler: async (ctx, args) => {
+    // Only admins can create appointments
+    const { user: adminUser } = await requireAdmin(ctx);
+    
+    // Create the appointment
+    const appointmentId = await ctx.db.insert("appointments", {
+      createdBy: adminUser._id,
+      clientId: args.clientId,
+      appointmentType: args.appointmentType,
+      location: args.location,
+      date: args.date,
+      startTime: args.startTime,
+      duration: args.duration,
+      durationDetails: args.durationDetails,
+      services: args.services,
+      rate: args.rate,
+      status: APPOINTMENT_STATUS.PENDING,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    
+    return appointmentId;
+  },
+});
+
+export const respondToAppointment = mutation({
+  args: {
+    appointmentId: v.id("appointments"),
+    approved: v.boolean(),
+    responseNotes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Only clients can respond to appointments
+    const { user: clientUser } = await requireClient(ctx);
+    
+    // Get the appointment
+    const appointment = await ctx.db.get(args.appointmentId);
+    
+    if (!appointment) {
+      throw new Error("Appointment not found");
+    }
+    
+    // Verify that the appointment belongs to this client
+    if (appointment.clientId !== clientUser._id) {
+      throw new Error("Not authorized to respond to this appointment");
+    }
+    
+    // Update the appointment
+    await ctx.db.patch(args.appointmentId, {
+      status: args.approved ? APPOINTMENT_STATUS.APPROVED : APPOINTMENT_STATUS.REJECTED,
+      respondedAt: Date.now(),
+      responseNotes: args.responseNotes,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const submitClientOnboarding = mutation({
   args: {
-    fullName: v.string(),
-    businessName: v.string(),
+    // Service Selection
+    serviceType: serviceTypeValidator,
+    
+    // Basic Information
+    legalFullName: v.string(),
+    preferredName: v.optional(v.string()),
+    dateOfBirth: v.string(),
     phone: v.string(),
-    address: v.string(),
-    city: v.string(),
-    state: v.string(),
-    zipCode: v.string(),
-    country: v.string(),
-    businessDescription: v.string(),
+    location: v.string(),
+    
+    // Identity Verification - we'll handle file uploads separately
+    
+    // Privacy & Persona
+    hasOnlinePersona: v.boolean(),
+    stageNames: v.optional(v.string()),
+    facialVisibility: facialVisibilityValidator,
+    privacyConcerns: v.optional(v.string()),
+    
+    // Account Access
+    accountCreationOption: v.optional(v.string()),
+    
+    // Additional fields
+    address: v.optional(v.string()),
+    city: v.optional(v.string()),
+    state: v.optional(v.string()),
+    zipCode: v.optional(v.string()),
+    country: v.optional(v.string()),
+    businessName: v.optional(v.string()),
+    businessDescription: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Get the current user
-    const { user } = await requireClient(ctx);
+    const userId = await auth.getUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+    
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+    
+    // Update the user's service type and role
+    await ctx.db.patch(userId, {
+      role: ROLES.CLIENT,
+      serviceType: args.serviceType,
+      onboardingStatus: ONBOARDING_STATUS.COMPLETED,
+    });
     
     // Generate a unique identifier for the client
     const uniqueIdentifier = `client-${Math.random().toString(36).substring(2, 15)}`;
@@ -122,45 +235,56 @@ export const submitClientOnboarding = mutation({
     // Create or update the client profile
     const existingProfile = await ctx.db
       .query("clientProfiles")
-      .withIndex("userId", (q) => q.eq("userId", user._id))
+      .withIndex("userId", (q) => q.eq("userId", userId))
       .unique();
     
     if (existingProfile) {
       // Update existing profile
       await ctx.db.patch(existingProfile._id, {
-        fullName: args.fullName,
-        businessName: args.businessName,
+        legalFullName: args.legalFullName,
+        preferredName: args.preferredName,
+        dateOfBirth: args.dateOfBirth,
         phone: args.phone,
         address: args.address,
         city: args.city,
         state: args.state,
         zipCode: args.zipCode,
         country: args.country,
+        serviceType: args.serviceType,
+        hasOnlinePersona: args.hasOnlinePersona,
+        stageNames: args.stageNames,
+        facialVisibility: args.facialVisibility,
+        privacyConcerns: args.privacyConcerns,
+        accountCreationOption: args.accountCreationOption,
+        businessName: args.businessName,
         businessDescription: args.businessDescription,
         onboardingCompletedAt: Date.now(),
       });
     } else {
       // Create new profile
       await ctx.db.insert("clientProfiles", {
-        userId: user._id,
-        fullName: args.fullName,
-        businessName: args.businessName,
+        userId,
+        legalFullName: args.legalFullName,
+        preferredName: args.preferredName,
+        dateOfBirth: args.dateOfBirth,
         phone: args.phone,
         address: args.address,
         city: args.city,
         state: args.state,
         zipCode: args.zipCode,
         country: args.country,
+        serviceType: args.serviceType,
+        hasOnlinePersona: args.hasOnlinePersona,
+        stageNames: args.stageNames,
+        facialVisibility: args.facialVisibility,
+        privacyConcerns: args.privacyConcerns,
+        accountCreationOption: args.accountCreationOption,
+        businessName: args.businessName,
         businessDescription: args.businessDescription,
         onboardingCompletedAt: Date.now(),
         uniqueIdentifier,
       });
     }
-    
-    // Update the user's onboarding status
-    await ctx.db.patch(user._id, {
-      onboardingStatus: ONBOARDING_STATUS.COMPLETED,
-    });
   },
 });
 
@@ -249,6 +373,94 @@ export const getActivePlans = query({
       throw new Error("Plan not found");
     }
     return { free, pro };
+  },
+});
+
+export const getClientAppointments = query({
+  args: {
+    status: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Get the current user
+    const { user } = await requireClient(ctx);
+    
+    // Query appointments
+    let appointmentsQuery = ctx.db
+      .query("appointments")
+      .withIndex("clientId", (q) => q.eq("clientId", user._id));
+    
+    // Filter by status if provided
+    if (args.status) {
+      appointmentsQuery = appointmentsQuery.filter((q) => 
+        q.eq(q.field("status"), args.status)
+      );
+    }
+    
+    // Get the appointments
+    const appointments = await appointmentsQuery.collect();
+    
+    // Get the admin users who created the appointments
+    const adminUsers = await asyncMap(
+      [...new Set(appointments.map((a) => a.createdBy))],
+      (adminId) => ctx.db.get(adminId)
+    );
+    
+    // Map admin users by ID for easy lookup
+    const adminMap = new Map(
+      adminUsers.filter(Boolean).map((admin) => [admin!._id, admin])
+    );
+    
+    // Return appointments with admin info
+    return appointments.map((appointment) => ({
+      ...appointment,
+      admin: adminMap.get(appointment.createdBy),
+    }));
+  },
+});
+
+export const getAdminAppointments = query({
+  args: {
+    status: v.optional(v.string()),
+    clientId: v.optional(v.id("users")),
+  },
+  handler: async (ctx, args) => {
+    // Only admins can view all appointments
+    await requireAdmin(ctx);
+    
+    // Start with base query
+    let appointmentsQuery = ctx.db.query("appointments");
+    
+    // Filter by client if provided
+    if (args.clientId) {
+      appointmentsQuery = appointmentsQuery.withIndex("clientId", (q) => 
+        q.eq("clientId", args.clientId)
+      );
+    }
+    
+    // Filter by status if provided
+    if (args.status) {
+      appointmentsQuery = appointmentsQuery.filter((q) => 
+        q.eq(q.field("status"), args.status)
+      );
+    }
+    
+    // Get the appointments
+    const appointments = await appointmentsQuery.collect();
+    
+    // Get all client users
+    const clientIds = [...new Set(appointments.map((a) => a.clientId))];
+    const clients = await asyncMap(clientIds, (clientId) => ctx.db.get(clientId));
+    
+    // Map clients by ID for easy lookup
+    const clientMap = new Map(
+      clients.filter(Boolean).map((client) => [client!._id, client])
+    );
+    
+    // Return appointments with client info
+    return appointments.map((appointment) => ({
+      ...appointment,
+      client: clientMap.get(appointment.clientId),
+    }));
   },
 });
 
