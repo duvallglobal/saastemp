@@ -58,6 +58,120 @@ export const insertSeedPlan = internalMutation({
   },
 });
 
+export const init = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    // Create the free plan
+    const existingFreePlan = await ctx.db
+      .query("plans")
+      .withIndex("key", (q) => q.eq("key", PLANS.FREE))
+      .unique();
+    if (!existingFreePlan) {
+      await ctx.db.insert("plans", {
+        key: PLANS.FREE,
+        stripeId: "free",
+        name: "Free",
+        description: "Free plan",
+        prices: {
+          month: {
+            usd: {
+              stripeId: "free-usd-month",
+              amount: 0,
+            },
+            eur: {
+              stripeId: "free-eur-month",
+              amount: 0,
+            },
+          },
+          year: {
+            usd: {
+              stripeId: "free-usd-year",
+              amount: 0,
+            },
+            eur: {
+              stripeId: "free-eur-year",
+              amount: 0,
+            },
+          },
+        },
+      });
+    }
+
+    // Create the pro plan
+    const existingProPlan = await ctx.db
+      .query("plans")
+      .withIndex("key", (q) => q.eq("key", PLANS.PRO))
+      .unique();
+    if (!existingProPlan) {
+      await ctx.db.insert("plans", {
+        key: PLANS.PRO,
+        stripeId: "pro",
+        name: "Pro",
+        description: "Pro plan",
+        prices: {
+          month: {
+            usd: {
+              stripeId: "pro-usd-month",
+              amount: 1000,
+            },
+            eur: {
+              stripeId: "pro-eur-month",
+              amount: 1000,
+            },
+          },
+          year: {
+            usd: {
+              stripeId: "pro-usd-year",
+              amount: 10000,
+            },
+            eur: {
+              stripeId: "pro-eur-year",
+              amount: 10000,
+            },
+          },
+        },
+      });
+    }
+    
+    // Create the first admin user if no admin exists
+    const existingAdmin = await ctx.db
+      .query("users")
+      .withIndex("role", (q) => q.eq("role", ROLES.ADMIN))
+      .first();
+    
+    if (!existingAdmin) {
+      // This is just a placeholder - in a real app, you would create the admin user
+      // through the normal authentication flow and then set their role to admin
+      console.log("No admin user found. Please create one through the authentication flow.");
+    }
+  },
+});
+
+export const createFirstAdmin = internalMutation({
+  args: {
+    email: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Find the user by email
+    const user = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", args.email))
+      .unique();
+    
+    if (!user) {
+      throw new Error(`User with email ${args.email} not found`);
+    }
+    
+    // Set the user as admin
+    await ctx.db.patch(user._id, {
+      role: ROLES.ADMIN,
+      onboardingStatus: ONBOARDING_STATUS.APPROVED,
+    });
+    
+    console.log(`User ${args.email} has been set as admin`);
+  },
+});
+
 export default internalAction(async (ctx) => {
   /**
    * Stripe Products.

@@ -2,13 +2,14 @@
  * Centralized site configuration, add whatever you need here.
  */
 export default {
-  siteTitle: "Convex SaaS",
+  siteTitle: "Manage The Fans",
   siteDescription:
-    "A Lightweight, Production-Ready Convex Stack for your next SaaS Application.",
-  siteUrl: "https://convex.dev",
+    "Two-tiered user management and login portal for Manage The Fans.",
+  siteUrl: "https://managethefans.com",
   siteImage: "/images/og-image.png",
   favicon: "/favicon.ico",
   twitterHandle: "",
-  email: "",
+  email: "support@managethefans.com",
   address: "",
 };
+

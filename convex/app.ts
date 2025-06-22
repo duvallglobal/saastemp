@@ -1,10 +1,11 @@
 import { internal } from "@cvx/_generated/api";
 import { mutation, query } from "@cvx/_generated/server";
 import { auth } from "@cvx/auth";
-import { currencyValidator, PLANS } from "@cvx/schema";
+import { currencyValidator, PLANS, ROLES, ONBOARDING_STATUS } from "@cvx/schema";
 import { asyncMap } from "convex-helpers";
 import { v } from "convex/values";
 import { User } from "~/types";
+import { requireAdmin, requireClient } from "./auth-helpers";
 
 export const getCurrentUser = query({
   args: {},
@@ -82,6 +83,115 @@ export const completeOnboarding = mutation({
         userId,
       },
     );
+  },
+});
+
+export const setUserRole = mutation({
+  args: {
+    userId: v.id("users"),
+    role: v.union(v.literal(ROLES.ADMIN), v.literal(ROLES.CLIENT)),
+  },
+  handler: async (ctx, args) => {
+    // Only admins can set roles
+    await requireAdmin(ctx);
+    
+    // Update the user's role
+    await ctx.db.patch(args.userId, { role: args.role });
+  },
+});
+
+export const submitClientOnboarding = mutation({
+  args: {
+    fullName: v.string(),
+    businessName: v.string(),
+    phone: v.string(),
+    address: v.string(),
+    city: v.string(),
+    state: v.string(),
+    zipCode: v.string(),
+    country: v.string(),
+    businessDescription: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Get the current user
+    const { user } = await requireClient(ctx);
+    
+    // Generate a unique identifier for the client
+    const uniqueIdentifier = `client-${Math.random().toString(36).substring(2, 15)}`;
+    
+    // Create or update the client profile
+    const existingProfile = await ctx.db
+      .query("clientProfiles")
+      .withIndex("userId", (q) => q.eq("userId", user._id))
+      .unique();
+    
+    if (existingProfile) {
+      // Update existing profile
+      await ctx.db.patch(existingProfile._id, {
+        fullName: args.fullName,
+        businessName: args.businessName,
+        phone: args.phone,
+        address: args.address,
+        city: args.city,
+        state: args.state,
+        zipCode: args.zipCode,
+        country: args.country,
+        businessDescription: args.businessDescription,
+        onboardingCompletedAt: Date.now(),
+      });
+    } else {
+      // Create new profile
+      await ctx.db.insert("clientProfiles", {
+        userId: user._id,
+        fullName: args.fullName,
+        businessName: args.businessName,
+        phone: args.phone,
+        address: args.address,
+        city: args.city,
+        state: args.state,
+        zipCode: args.zipCode,
+        country: args.country,
+        businessDescription: args.businessDescription,
+        onboardingCompletedAt: Date.now(),
+        uniqueIdentifier,
+      });
+    }
+    
+    // Update the user's onboarding status
+    await ctx.db.patch(user._id, {
+      onboardingStatus: ONBOARDING_STATUS.COMPLETED,
+    });
+  },
+});
+
+export const approveClientOnboarding = mutation({
+  args: {
+    clientId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    // Only admins can approve onboarding
+    const { user: adminUser } = await requireAdmin(ctx);
+    
+    // Get the client profile
+    const clientProfile = await ctx.db
+      .query("clientProfiles")
+      .withIndex("userId", (q) => q.eq("userId", args.clientId))
+      .unique();
+    
+    if (!clientProfile) {
+      throw new Error("Client profile not found");
+    }
+    
+    // Update the client profile
+    await ctx.db.patch(clientProfile._id, {
+      onboardingApprovedAt: Date.now(),
+      onboardingApprovedBy: adminUser._id,
+    });
+    
+    // Update the user's onboarding status
+    await ctx.db.patch(args.clientId, {
+      onboardingStatus: ONBOARDING_STATUS.APPROVED,
+    });
   },
 });
 

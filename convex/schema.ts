@@ -32,6 +32,66 @@ export const planKeyValidator = v.union(
 );
 export type PlanKey = Infer<typeof planKeyValidator>;
 
+// Define user roles
+export const ROLES = {
+  ADMIN: "admin",
+  CLIENT: "client",
+} as const;
+export const roleValidator = v.union(
+  v.literal(ROLES.ADMIN),
+  v.literal(ROLES.CLIENT),
+);
+export type Role = Infer<typeof roleValidator>;
+
+// Define onboarding status
+export const ONBOARDING_STATUS = {
+  NOT_STARTED: "not_started",
+  IN_PROGRESS: "in_progress",
+  COMPLETED: "completed",
+  APPROVED: "approved",
+} as const;
+export const onboardingStatusValidator = v.union(
+  v.literal(ONBOARDING_STATUS.NOT_STARTED),
+  v.literal(ONBOARDING_STATUS.IN_PROGRESS),
+  v.literal(ONBOARDING_STATUS.COMPLETED),
+  v.literal(ONBOARDING_STATUS.APPROVED),
+);
+export type OnboardingStatus = Infer<typeof onboardingStatusValidator>;
+
+// Define appointment status
+export const APPOINTMENT_STATUS = {
+  PENDING: "pending",
+  APPROVED: "approved",
+  REJECTED: "rejected",
+  COMPLETED: "completed",
+  CANCELLED: "cancelled",
+} as const;
+export const appointmentStatusValidator = v.union(
+  v.literal(APPOINTMENT_STATUS.PENDING),
+  v.literal(APPOINTMENT_STATUS.APPROVED),
+  v.literal(APPOINTMENT_STATUS.REJECTED),
+  v.literal(APPOINTMENT_STATUS.COMPLETED),
+  v.literal(APPOINTMENT_STATUS.CANCELLED),
+);
+export type AppointmentStatus = Infer<typeof appointmentStatusValidator>;
+
+// Define content status
+export const CONTENT_STATUS = {
+  DRAFT: "draft",
+  SUBMITTED: "submitted",
+  APPROVED: "approved",
+  REJECTED: "rejected",
+  PUBLISHED: "published",
+} as const;
+export const contentStatusValidator = v.union(
+  v.literal(CONTENT_STATUS.DRAFT),
+  v.literal(CONTENT_STATUS.SUBMITTED),
+  v.literal(CONTENT_STATUS.APPROVED),
+  v.literal(CONTENT_STATUS.REJECTED),
+  v.literal(CONTENT_STATUS.PUBLISHED),
+);
+export type ContentStatus = Infer<typeof contentStatusValidator>;
+
 const priceValidator = v.object({
   stripeId: v.string(),
   amount: v.number(),
@@ -54,9 +114,91 @@ const schema = defineSchema({
     phoneVerificationTime: v.optional(v.number()),
     isAnonymous: v.optional(v.boolean()),
     customerId: v.optional(v.string()),
+    // Add role field for user type
+    role: v.optional(roleValidator),
+    // Add onboarding status field
+    onboardingStatus: v.optional(onboardingStatusValidator),
   })
     .index("email", ["email"])
-    .index("customerId", ["customerId"]),
+    .index("customerId", ["customerId"])
+    .index("role", ["role"]),
+  
+  // Client profiles for storing detailed client information
+  clientProfiles: defineTable({
+    userId: v.id("users"),
+    // Basic information
+    fullName: v.optional(v.string()),
+    address: v.optional(v.string()),
+    city: v.optional(v.string()),
+    state: v.optional(v.string()),
+    zipCode: v.optional(v.string()),
+    country: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    // Business information
+    businessName: v.optional(v.string()),
+    businessDescription: v.optional(v.string()),
+    // Preferences
+    preferredContactMethod: v.optional(v.string()),
+    // Onboarding data
+    onboardingCompletedAt: v.optional(v.number()),
+    onboardingApprovedAt: v.optional(v.number()),
+    onboardingApprovedBy: v.optional(v.id("users")),
+    // Unique identifier for the client
+    uniqueIdentifier: v.string(),
+  })
+    .index("userId", ["userId"])
+    .index("uniqueIdentifier", ["uniqueIdentifier"]),
+  
+  // Appointments for scheduling between admin and clients
+  appointments: defineTable({
+    // Who created the appointment (admin)
+    createdBy: v.id("users"),
+    // Client the appointment is for
+    clientId: v.id("users"),
+    // Appointment details
+    title: v.string(),
+    description: v.optional(v.string()),
+    startTime: v.number(),
+    endTime: v.number(),
+    location: v.optional(v.string()),
+    // Status tracking
+    status: appointmentStatusValidator,
+    // Response tracking
+    respondedAt: v.optional(v.number()),
+    responseNotes: v.optional(v.string()),
+    // Metadata
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("clientId", ["clientId"])
+    .index("createdBy", ["createdBy"])
+    .index("status", ["status"]),
+  
+  // Content for client uploads and admin moderation
+  content: defineTable({
+    // Who uploaded the content
+    uploadedBy: v.id("users"),
+    // Content details
+    title: v.string(),
+    description: v.optional(v.string()),
+    contentType: v.string(), // e.g., "image", "video", "document"
+    fileId: v.optional(v.id("_storage")),
+    fileUrl: v.optional(v.string()),
+    // Status tracking
+    status: contentStatusValidator,
+    // Moderation
+    moderatedBy: v.optional(v.id("users")),
+    moderatedAt: v.optional(v.number()),
+    moderationNotes: v.optional(v.string()),
+    // Metadata
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("uploadedBy", ["uploadedBy"])
+    .index("status", ["status"])
+    .index("contentType", ["contentType"]),
+  
+  // ... existing plans table ...
   plans: defineTable({
     key: planKeyValidator,
     stripeId: v.string(),
@@ -69,6 +211,8 @@ const schema = defineSchema({
   })
     .index("key", ["key"])
     .index("stripeId", ["stripeId"]),
+  
+  // ... existing subscriptions table ...
   subscriptions: defineTable({
     userId: v.id("users"),
     planId: v.id("plans"),
