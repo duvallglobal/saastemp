@@ -140,6 +140,23 @@ const pricesValidator = v.object({
   [CURRENCIES.EUR]: priceValidator,
 });
 
+// Define screening status
+export const SCREENING_STATUS = {
+  SCREENING_COMPLETE: "screening-complete",
+  PENDING_SCREENING: "pending-screening",
+  SCREENING_WAIVED: "screening-waived",
+  SCREENING_FAILED: "screening-failed",
+  FURTHER_INFO_REQUIRED: "further-info-required",
+} as const;
+export const screeningStatusValidator = v.union(
+  v.literal(SCREENING_STATUS.SCREENING_COMPLETE),
+  v.literal(SCREENING_STATUS.PENDING_SCREENING),
+  v.literal(SCREENING_STATUS.SCREENING_WAIVED),
+  v.literal(SCREENING_STATUS.SCREENING_FAILED),
+  v.literal(SCREENING_STATUS.FURTHER_INFO_REQUIRED),
+);
+export type ScreeningStatus = Infer<typeof screeningStatusValidator>;
+
 const schema = defineSchema({
   ...authTables,
   users: defineTable({
@@ -212,18 +229,34 @@ const schema = defineSchema({
     clientId: v.id("users"),
     // Appointment details
     appointmentType: appointmentTypeValidator,
-    location: v.optional(v.string()),
+    locationAddress: v.optional(v.string()),
     date: v.string(),
     startTime: v.string(),
     duration: v.string(), // Could be "1", "2", "3", "4", "travel", "overnight", "other"
     durationDetails: v.optional(v.string()), // For "other" duration
-    services: v.string(), // Services to be provided
+    services: v.optional(v.string()), // Services to be provided
     rate: v.number(), // Agreed rate/price
+    
+    // Booking contact information
+    contactName: v.optional(v.string()),
+    contactPhone: v.optional(v.string()),
+    contactEmail: v.optional(v.string()),
+    
+    // Screening information
+    screeningStatus: v.optional(v.string()),
+    screeningNotes: v.optional(v.string()),
+    
+    // Notes
+    internalNotes: v.optional(v.string()), // Admin only
+    clientNotes: v.optional(v.string()), // Visible to client
+    
     // Status tracking
     status: appointmentStatusValidator,
+    
     // Response tracking
     respondedAt: v.optional(v.number()),
     responseNotes: v.optional(v.string()),
+    
     // Metadata
     createdAt: v.number(),
     updatedAt: v.number(),

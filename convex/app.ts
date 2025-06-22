@@ -111,15 +111,51 @@ export const setUserRole = mutation({
 
 export const createAppointment = mutation({
   args: {
+    // 1. Client Selection
     clientId: v.id("users"),
+    
+    // 2. Appointment Type
     appointmentType: appointmentTypeValidator,
-    location: v.optional(v.string()),
-    date: v.string(),
+    
+    // 3. Location Address (Conditional)
+    locationAddress: v.optional(v.string()),
+    
+    // 4. Appointment Date
+    appointmentDate: v.string(),
+    
+    // 5. Start Time
     startTime: v.string(),
+    
+    // 6. Duration
     duration: v.string(),
     durationDetails: v.optional(v.string()),
-    services: v.string(),
+    
+    // 7. Services to be Provided
+    services: v.optional(v.string()),
+    
+    // 8. Agreed Rate/Price
     rate: v.number(),
+    
+    // 9. Booking Contact Name
+    contactName: v.optional(v.string()),
+    
+    // 10. Booking Contact Phone
+    contactPhone: v.optional(v.string()),
+    
+    // 11. Booking Contact Email
+    contactEmail: v.optional(v.string()),
+    
+    // 12. Screening Status
+    screeningStatus: v.optional(v.string()),
+    
+    // 13. Screening Notes
+    screeningNotes: v.optional(v.string()),
+    
+    // 15. Internal Notes
+    internalNotes: v.optional(v.string()),
+    
+    // 16. Notes for Client
+    clientNotes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Only admins can create appointments
@@ -130,13 +166,20 @@ export const createAppointment = mutation({
       createdBy: adminUser._id,
       clientId: args.clientId,
       appointmentType: args.appointmentType,
-      location: args.location,
-      date: args.date,
+      locationAddress: args.locationAddress,
+      date: args.appointmentDate,
       startTime: args.startTime,
       duration: args.duration,
       durationDetails: args.durationDetails,
       services: args.services,
       rate: args.rate,
+      contactName: args.contactName,
+      contactPhone: args.contactPhone,
+      contactEmail: args.contactEmail,
+      screeningStatus: args.screeningStatus || "pending-screening",
+      screeningNotes: args.screeningNotes,
+      internalNotes: args.internalNotes,
+      clientNotes: args.clientNotes,
       status: APPOINTMENT_STATUS.PENDING,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -604,7 +647,6 @@ export const submitClientOnboardingPartial = mutation({
     ttPassword: v.optional(v.string()),
     twUsername: v.optional(v.string()),
     twEmail: v.optional(v.string()),
-    twPassword: v.optional(v.string()),
     additionalPlatformName: v.optional(v.string()),
     additionalPlatformUsername: v.optional(v.string()),
     additionalPlatformEmail: v.optional(v.string()),
@@ -897,5 +939,22 @@ export const getClientProfile = query({
       .unique();
     
     return profile;
+  },
+});
+
+// Function to get clients for admin
+export const getClients = query({
+  args: {},
+  handler: async (ctx) => {
+    // Only admins can view clients
+    await requireAdmin(ctx);
+    
+    // Get all client users
+    const clientUsers = await ctx.db
+      .query("users")
+      .withIndex("role", (q) => q.eq("role", ROLES.CLIENT))
+      .collect();
+    
+    return clientUsers;
   },
 });
