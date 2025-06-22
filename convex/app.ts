@@ -503,3 +503,399 @@ export const deleteCurrentUserAccount = mutation({
     });
   },
 });
+
+// New function to save partial onboarding data
+export const submitClientOnboardingPartial = mutation({
+  args: {
+    // Service Selection
+    serviceType: v.optional(serviceTypeValidator),
+    
+    // Basic Information
+    legalFullName: v.optional(v.string()),
+    preferredName: v.optional(v.string()),
+    dateOfBirth: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    location: v.optional(v.string()),
+    
+    // Privacy & Persona
+    hasOnlinePersona: v.optional(v.boolean()),
+    stageNames: v.optional(v.string()),
+    facialVisibility: v.optional(facialVisibilityValidator),
+    privacyConcerns: v.optional(v.string()),
+    
+    // Account Access
+    accountCreationOption: v.optional(v.string()),
+    needHelpCreating: v.optional(v.boolean()),
+    doNotNeedAccountManagement: v.optional(v.boolean()),
+    
+    // OnlyFans specific
+    ofUsername: v.optional(v.string()),
+    ofEmail: v.optional(v.string()),
+    ofPassword: v.optional(v.string()),
+    ofCreatorHandle: v.optional(v.string()),
+    ofExperience: v.optional(v.string()),
+    ofObjectiveGrowth: v.optional(v.boolean()),
+    ofObjectiveBrand: v.optional(v.boolean()),
+    ofObjectiveDMs: v.optional(v.boolean()),
+    ofObjectiveOther: v.optional(v.boolean()),
+    ofObjectiveOtherText: v.optional(v.string()),
+    ofContentPhotos: v.optional(v.boolean()),
+    ofContentVideos: v.optional(v.boolean()),
+    ofContentPPV: v.optional(v.boolean()),
+    ofContentCustom: v.optional(v.boolean()),
+    ofContentLive: v.optional(v.boolean()),
+    ofContentOther: v.optional(v.boolean()),
+    ofContentOtherText: v.optional(v.string()),
+    ofContentSchedule: v.optional(v.string()),
+    ofTargetAudience: v.optional(v.string()),
+    ofPrimaryGoals: v.optional(v.string()),
+    ofContentUnwilling: v.optional(v.string()),
+    ofBrandDescription: v.optional(v.string()),
+    ofDoNotSay: v.optional(v.string()),
+    ofContentEditor: v.optional(v.string()),
+    
+    // Rent.Men specific
+    rmUsername: v.optional(v.string()),
+    rmEmail: v.optional(v.string()),
+    rmPassword: v.optional(v.string()),
+    rmProfileUrl: v.optional(v.string()),
+    rmPrimaryServices: v.optional(v.string()),
+    rmRateHourly: v.optional(v.boolean()),
+    rmRateHourlyAmount: v.optional(v.string()),
+    rmRateOvernight: v.optional(v.boolean()),
+    rmRateOvernightAmount: v.optional(v.string()),
+    rmRateTravel: v.optional(v.boolean()),
+    rmRateTravelAmount: v.optional(v.string()),
+    rmAvailability: v.optional(v.string()),
+    rmGeographicAvailability: v.optional(v.string()),
+    rmWillingToTravel: v.optional(v.boolean()),
+    rmTravelRegions: v.optional(v.string()),
+    rmCallType: v.optional(v.string()),
+    rmIncallLocation: v.optional(v.string()),
+    rmClientPreferences: v.optional(v.string()),
+    rmServiceLimits: v.optional(v.string()),
+    rmScreeningID: v.optional(v.boolean()),
+    rmScreeningVideoCall: v.optional(v.boolean()),
+    rmScreeningDeposit: v.optional(v.boolean()),
+    rmScreeningOther: v.optional(v.boolean()),
+    rmScreeningOtherText: v.optional(v.string()),
+    rmApprovalProcess: v.optional(v.string()),
+    rmRepeatClients: v.optional(v.string()),
+    rmPaymentMethod: v.optional(v.string()),
+    rmDepositRequirements: v.optional(v.string()),
+    
+    // Communication preferences
+    communicationMethod: v.optional(v.string()),
+    bestContactMethod: v.optional(v.string()),
+    safetyRequirements: v.optional(v.string()),
+    
+    // Legal agreements
+    authorizeAccess: v.optional(v.boolean()),
+    backupResponsibility: v.optional(v.boolean()),
+    termsAgreement: v.optional(v.boolean()),
+    confirmInformation: v.optional(v.boolean()),
+    
+    // Social media
+    igUsername: v.optional(v.string()),
+    igEmail: v.optional(v.string()),
+    igPassword: v.optional(v.string()),
+    ttUsername: v.optional(v.string()),
+    ttEmail: v.optional(v.string()),
+    ttPassword: v.optional(v.string()),
+    twUsername: v.optional(v.string()),
+    twEmail: v.optional(v.string()),
+    twPassword: v.optional(v.string()),
+    additionalPlatformName: v.optional(v.string()),
+    additionalPlatformUsername: v.optional(v.string()),
+    additionalPlatformEmail: v.optional(v.string()),
+    additionalPlatformPassword: v.optional(v.string()),
+    
+    // Step tracking
+    stepCompleted: v.optional(v.number()),
+    isComplete: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    // Get the current user
+    const userId = await auth.getUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+    
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+    
+    // Update user role and onboarding status if not already set
+    if (!user.role) {
+      await ctx.db.patch(userId, {
+        role: ROLES.CLIENT,
+      });
+    }
+    
+    // Update onboarding status based on step completed
+    if (args.stepCompleted) {
+      await ctx.db.patch(userId, {
+        onboardingStatus: ONBOARDING_STATUS.IN_PROGRESS,
+      });
+    }
+    
+    // If onboarding is complete, update status
+    if (args.isComplete) {
+      await ctx.db.patch(userId, {
+        onboardingStatus: ONBOARDING_STATUS.COMPLETED,
+      });
+    }
+    
+    // Update service type if provided
+    if (args.serviceType) {
+      await ctx.db.patch(userId, {
+        serviceType: args.serviceType,
+      });
+    }
+    
+    // Extract location components if provided
+    let city, state, country;
+    if (args.location) {
+      const locationParts = args.location.split(',').map(part => part.trim());
+      if (locationParts.length >= 1) city = locationParts[0];
+      if (locationParts.length >= 2) state = locationParts[1];
+      if (locationParts.length >= 3) country = locationParts[2];
+    }
+    
+    // Check if client profile already exists
+    const existingProfile = await ctx.db
+      .query("clientProfiles")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .unique();
+    
+    // Prepare profile data
+    const profileData: any = {
+      // Only include fields that are provided
+      ...(args.legalFullName && { legalFullName: args.legalFullName }),
+      ...(args.preferredName && { preferredName: args.preferredName }),
+      ...(args.dateOfBirth && { dateOfBirth: args.dateOfBirth }),
+      ...(args.phone && { phone: args.phone }),
+      ...(city && { city }),
+      ...(state && { state }),
+      ...(country && { country }),
+      ...(args.serviceType && { serviceType: args.serviceType }),
+      ...(args.hasOnlinePersona !== undefined && { hasOnlinePersona: args.hasOnlinePersona }),
+      ...(args.stageNames && { stageNames: args.stageNames }),
+      ...(args.facialVisibility && { facialVisibility: args.facialVisibility }),
+      ...(args.privacyConcerns && { privacyConcerns: args.privacyConcerns }),
+    };
+    
+    // Store sensitive information securely (in a real implementation, these would be encrypted)
+    // For this demo, we'll just store them in a JSON field
+    const sensitiveData: any = {};
+    
+    // Add account credentials if provided
+    if (args.ofUsername || args.ofEmail || args.ofPassword) {
+      sensitiveData.onlyfans = {
+        username: args.ofUsername,
+        email: args.ofEmail,
+        password: args.ofPassword,
+      };
+    }
+    
+    if (args.rmUsername || args.rmEmail || args.rmPassword) {
+      sensitiveData.rentmen = {
+        username: args.rmUsername,
+        email: args.rmEmail,
+        password: args.rmPassword,
+      };
+    }
+    
+    // Add social media credentials
+    const socialMedia: any = {};
+    
+    if (args.igUsername || args.igEmail || args.igPassword) {
+      socialMedia.instagram = {
+        username: args.igUsername,
+        email: args.igEmail,
+        password: args.igPassword,
+      };
+    }
+    
+    if (args.ttUsername || args.ttEmail || args.ttPassword) {
+      socialMedia.tiktok = {
+        username: args.ttUsername,
+        email: args.ttEmail,
+        password: args.ttPassword,
+      };
+    }
+    
+    if (args.twUsername || args.twEmail || args.twPassword) {
+      socialMedia.twitter = {
+        username: args.twUsername,
+        email: args.twEmail,
+        password: args.twPassword,
+      };
+    }
+    
+    if (Object.keys(socialMedia).length > 0) {
+      sensitiveData.socialMedia = socialMedia;
+    }
+    
+    // Add additional platform if provided
+    if (args.additionalPlatformName) {
+      sensitiveData.additionalPlatform = {
+        name: args.additionalPlatformName,
+        username: args.additionalPlatformUsername,
+        email: args.additionalPlatformEmail,
+        password: args.additionalPlatformPassword,
+      };
+    }
+    
+    // Store service-specific data
+    const serviceData: any = {};
+    
+    // OnlyFans specific data
+    if (args.serviceType === "onlyfans" || args.serviceType === "both") {
+      serviceData.onlyfans = {
+        creatorHandle: args.ofCreatorHandle,
+        experience: args.ofExperience,
+        objectives: {
+          growth: args.ofObjectiveGrowth,
+          brand: args.ofObjectiveBrand,
+          dms: args.ofObjectiveDMs,
+          other: args.ofObjectiveOther,
+          otherText: args.ofObjectiveOtherText,
+        },
+        content: {
+          photos: args.ofContentPhotos,
+          videos: args.ofContentVideos,
+          ppv: args.ofContentPPV,
+          custom: args.ofContentCustom,
+          live: args.ofContentLive,
+          other: args.ofContentOther,
+          otherText: args.ofContentOtherText,
+          schedule: args.ofContentSchedule,
+          unwilling: args.ofContentUnwilling,
+        },
+        targetAudience: args.ofTargetAudience,
+        primaryGoals: args.ofPrimaryGoals,
+        brandDescription: args.ofBrandDescription,
+        doNotSay: args.ofDoNotSay,
+        contentEditor: args.ofContentEditor,
+      };
+    }
+    
+    // Rent.Men specific data
+    if (args.serviceType === "rentmen" || args.serviceType === "both") {
+      serviceData.rentmen = {
+        profileUrl: args.rmProfileUrl,
+        primaryServices: args.rmPrimaryServices,
+        rates: {
+          hourly: {
+            enabled: args.rmRateHourly,
+            amount: args.rmRateHourlyAmount,
+          },
+          overnight: {
+            enabled: args.rmRateOvernight,
+            amount: args.rmRateOvernightAmount,
+          },
+          travel: {
+            enabled: args.rmRateTravel,
+            amount: args.rmRateTravelAmount,
+          },
+        },
+        availability: args.rmAvailability,
+        geographicAvailability: args.rmGeographicAvailability,
+        travel: {
+          willing: args.rmWillingToTravel,
+          regions: args.rmTravelRegions,
+        },
+        callType: args.rmCallType,
+        incallLocation: args.rmIncallLocation,
+        clientPreferences: args.rmClientPreferences,
+        serviceLimits: args.rmServiceLimits,
+        screening: {
+          id: args.rmScreeningID,
+          videoCall: args.rmScreeningVideoCall,
+          deposit: args.rmScreeningDeposit,
+          other: args.rmScreeningOther,
+          otherText: args.rmScreeningOtherText,
+        },
+        approvalProcess: args.rmApprovalProcess,
+        repeatClients: args.rmRepeatClients,
+        paymentMethod: args.rmPaymentMethod,
+        depositRequirements: args.rmDepositRequirements,
+      };
+    }
+    
+    // Communication preferences
+    const communicationPrefs: any = {
+      method: args.communicationMethod,
+      bestContactMethod: args.bestContactMethod,
+      safetyRequirements: args.safetyRequirements,
+    };
+    
+    // Legal agreements
+    const legalAgreements: any = {
+      authorizeAccess: args.authorizeAccess,
+      backupResponsibility: args.backupResponsibility,
+      termsAgreement: args.termsAgreement,
+      confirmInformation: args.confirmInformation,
+    };
+    
+    // Add metadata fields to profile data
+    if (Object.keys(sensitiveData).length > 0) {
+      profileData.sensitiveData = sensitiveData;
+    }
+    
+    if (Object.keys(serviceData).length > 0) {
+      profileData.serviceData = serviceData;
+    }
+    
+    if (Object.keys(communicationPrefs).length > 0) {
+      profileData.communicationPreferences = communicationPrefs;
+    }
+    
+    if (Object.keys(legalAgreements).length > 0) {
+      profileData.legalAgreements = legalAgreements;
+    }
+    
+    // Update last saved timestamp
+    profileData.lastSaved = Date.now();
+    
+    if (args.isComplete) {
+      profileData.onboardingCompletedAt = Date.now();
+    }
+    
+    if (existingProfile) {
+      // Update existing profile
+      await ctx.db.patch(existingProfile._id, profileData);
+    } else {
+      // Create new profile with a unique identifier
+      const uniqueIdentifier = `client-${Math.random().toString(36).substring(2, 15)}`;
+      await ctx.db.insert("clientProfiles", {
+        userId,
+        uniqueIdentifier,
+        ...profileData,
+      });
+    }
+    
+    return { success: true };
+  },
+});
+
+// Function to get client profile
+export const getClientProfile = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+    
+    // Get the client profile
+    const profile = await ctx.db
+      .query("clientProfiles")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .unique();
+    
+    return profile;
+  },
+});

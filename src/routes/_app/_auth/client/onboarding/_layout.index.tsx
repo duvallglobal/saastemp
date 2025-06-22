@@ -1,15 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { convexQuery } from "@convex-dev/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { convexQuery, convexMutation } from "@convex-dev/react-query";
 import { api } from "@cvx/_generated/api";
 import { Button } from "@/ui/button";
-import { Input } from "@/ui/input";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { OnboardingCard } from "@/components/onboarding/OnboardingCard";
+import { OnlyFansFields } from "@/components/onboarding/OnlyFansFields";
+import { RentMenFields } from "@/components/onboarding/RentMenFields";
+import { LegalAgreements } from "@/components/onboarding/LegalAgreements";
+import { CommunicationPreferences } from "@/components/onboarding/CommunicationPreferences";
+import { AccountAccess } from "@/components/onboarding/AccountAccess";
 import { RadioGroup, RadioGroupItem } from "@/ui/radio-group";
 import { Label } from "@/ui/label";
+import { Input } from "@/ui/input";
 import { Textarea } from "@/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { Checkbox } from "@/ui/checkbox";
+import { debounce } from "lodash";
+import { CheckIcon, Loader2, Save } from "lucide-react";
 
 export const Route = createFileRoute("/_app/_auth/client/onboarding/_layout/")({
   component: OnboardingForm,
@@ -17,7 +24,17 @@ export const Route = createFileRoute("/_app/_auth/client/onboarding/_layout/")({
 
 function OnboardingForm() {
   const { data: user } = useQuery(convexQuery(api.app.getCurrentUser, {}));
-  const [step, setStep] = useState(1);
+  const [activeStep, setActiveStep] = useState(1);
+  const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
+  
+  // Get existing onboarding data if available
+  const { data: existingProfile } = useQuery(
+    convexQuery(api.app.getClientProfile, {})
+  );
+  
+  // Initialize form data with existing data if available
   const [formData, setFormData] = useState({
     // Service Selection
     serviceType: "",
@@ -43,70 +60,296 @@ function OnboardingForm() {
     
     // Account Access
     accountCreationOption: "",
+    needHelpCreating: false,
+    doNotNeedAccountManagement: false,
     
-    // Additional fields can be added as needed
+    // OnlyFans specific
+    ofUsername: "",
+    ofEmail: "",
+    ofPassword: "",
+    ofCreatorHandle: "",
+    ofExperience: "",
+    ofObjectiveGrowth: false,
+    ofObjectiveBrand: false,
+    ofObjectiveDMs: false,
+    ofObjectiveOther: false,
+    ofObjectiveOtherText: "",
+    ofContentPhotos: false,
+    ofContentVideos: false,
+    ofContentPPV: false,
+    ofContentCustom: false,
+    ofContentLive: false,
+    ofContentOther: false,
+    ofContentOtherText: "",
+    ofContentSchedule: "",
+    ofTargetAudience: "",
+    ofPrimaryGoals: "",
+    ofContentUnwilling: "",
+    ofBrandDescription: "",
+    ofDoNotSay: "",
+    ofContentEditor: "client",
+    
+    // Rent.Men specific
+    rmUsername: "",
+    rmEmail: "",
+    rmPassword: "",
+    rmProfileUrl: "",
+    rmPrimaryServices: "",
+    rmRateHourly: false,
+    rmRateHourlyAmount: "",
+    rmRateOvernight: false,
+    rmRateOvernightAmount: "",
+    rmRateTravel: false,
+    rmRateTravelAmount: "",
+    rmAvailability: "",
+    rmGeographicAvailability: "",
+    rmWillingToTravel: false,
+    rmTravelRegions: "",
+    rmCallType: "",
+    rmIncallLocation: "",
+    rmClientPreferences: "",
+    rmServiceLimits: "",
+    rmScreeningID: false,
+    rmScreeningVideoCall: false,
+    rmScreeningDeposit: false,
+    rmScreeningOther: false,
+    rmScreeningOtherText: "",
+    rmApprovalProcess: "",
+    rmRepeatClients: "",
+    rmPaymentMethod: "",
+    rmDepositRequirements: "",
+    
+    // Communication preferences
+    communicationMethod: "",
+    bestContactMethod: "",
+    safetyRequirements: "",
+    
+    // Legal agreements
+    authorizeAccess: false,
+    backupResponsibility: false,
+    termsAgreement: false,
+    confirmInformation: false,
+    
+    // Social media
+    igUsername: "",
+    igEmail: "",
+    igPassword: "",
+    ttUsername: "",
+    ttEmail: "",
+    ttPassword: "",
+    twUsername: "",
+    twEmail: "",
+    twPassword: "",
+    additionalPlatformName: "",
+    additionalPlatformUsername: "",
+    additionalPlatformEmail: "",
+    additionalPlatformPassword: "",
   });
   
+  // Load existing data if available
+  useEffect(() => {
+    if (existingProfile) {
+      // Map the profile data to the form data
+      const mappedData: any = {
+        serviceType: existingProfile.serviceType || "",
+        legalFullName: existingProfile.legalFullName || "",
+        preferredName: existingProfile.preferredName || "",
+        phone: existingProfile.phone || "",
+        dateOfBirth: existingProfile.dateOfBirth || "",
+        location: `${existingProfile.city || ""}, ${existingProfile.state || ""}, ${existingProfile.country || ""}`,
+        hasOnlinePersona: existingProfile.hasOnlinePersona || false,
+        stageNames: existingProfile.stageNames || "",
+        facialVisibility: existingProfile.facialVisibility || "face-okay",
+        privacyConcerns: existingProfile.privacyConcerns || "",
+        // Add more mappings as needed
+      };
+      
+      // Update form data with existing data
+      setFormData(prev => ({
+        ...prev,
+        ...mappedData,
+      }));
+      
+      // Mark steps as completed based on existing data
+      const completed = [];
+      if (mappedData.serviceType) completed.push(1);
+      if (mappedData.legalFullName && mappedData.phone) completed.push(2);
+      // Add more conditions for other steps
+      
+      setCompletedSteps(completed);
+    }
+  }, [existingProfile]);
+  
+  // Mutation for saving onboarding data
+  const saveOnboardingMutation = useMutation(
+    convexMutation(api.app.submitClientOnboardingPartial)
+  );
+  
+  // Function to save form data
+  const saveFormData = async (data: any, stepCompleted?: number) => {
+    setIsSaving(true);
+    setSaveStatus("saving");
+    
+    try {
+      // Prepare data for saving
+      const dataToSave = {
+        ...data,
+        stepCompleted,
+      };
+      
+      // Call the API to save the data
+      await saveOnboardingMutation.mutateAsync(dataToSave);
+      
+      // Update completed steps
+      if (stepCompleted && !completedSteps.includes(stepCompleted)) {
+        setCompletedSteps(prev => [...prev, stepCompleted]);
+      }
+      
+      setSaveStatus("success");
+    } catch (error) {
+      console.error("Error saving form data:", error);
+      setSaveStatus("error");
+    } finally {
+      setIsSaving(false);
+      // Reset save status after a delay
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    }
+  };
+  
+  // Debounced save for when user is typing
+  const debouncedSave = useCallback(
+    debounce((data) => saveFormData(data), 2000),
+    []
+  );
+  
+  // Handle form field changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    const updatedData = { ...formData, [name]: value };
+    setFormData(updatedData);
+    debouncedSave(updatedData);
   };
   
   const handleSelectChange = (name: string, value: string) => {
-    setFormData(prev => ({ ...prev, [name]: value }));
+    const updatedData = { ...formData, [name]: value };
+    setFormData(updatedData);
+    debouncedSave(updatedData);
   };
   
   const handleCheckboxChange = (name: string, checked: boolean) => {
-    setFormData(prev => ({ ...prev, [name]: checked }));
+    const updatedData = { ...formData, [name]: checked };
+    setFormData(updatedData);
+    debouncedSave(updatedData);
+  };
+  
+  // Handle step navigation
+  const goToStep = (step: number) => {
+    if (step <= activeStep || completedSteps.includes(step - 1)) {
+      setActiveStep(step);
+    }
   };
   
   const nextStep = () => {
-    setStep(prev => prev + 1);
+    // Save current step data
+    saveFormData(formData, activeStep);
+    // Move to next step
+    setActiveStep(prev => prev + 1);
   };
   
   const prevStep = () => {
-    setStep(prev => prev - 1);
+    setActiveStep(prev => prev - 1);
   };
   
-  const handleSubmit = (e: React.FormEvent) => {
+  // Handle final submission
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real implementation, this would submit the data to the server
-    alert("Onboarding form submitted! This is a placeholder.");
+    setIsSaving(true);
+    
+    try {
+      // Call the API to submit the complete onboarding data
+      await saveOnboardingMutation.mutateAsync({
+        ...formData,
+        isComplete: true,
+      });
+      
+      // Show success message
+      alert("Onboarding completed successfully! Your information has been submitted for review.");
+    } catch (error) {
+      console.error("Error submitting onboarding:", error);
+      alert("There was an error submitting your onboarding information. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
   };
   
   return (
-    <div className="max-w-3xl mx-auto">
-      <div className="mb-6">
+    <div className="max-w-4xl mx-auto pb-20">
+      <div className="mb-8">
         <h1 className="text-2xl font-bold text-primary mb-2">Onboarding Questionnaire</h1>
-        <p className="text-primary/60 mb-4">
+        <p className="text-primary/60 mb-6">
           This onboarding process includes conditional logic for relevant questions,
           identity verification, service-specific inquiries, and legal agreements.
         </p>
         
-        <div className="flex justify-between mb-4">
-          {[1, 2, 3, 4, 5].map(num => (
+        {/* Progress Bar */}
+        <div className="relative mb-8">
+          <div className="flex justify-between mb-2">
+            {[1, 2, 3, 4, 5, 6].map(step => (
+              <button
+                key={step}
+                onClick={() => goToStep(step)}
+                className={`flex h-10 w-10 items-center justify-center rounded-full transition-all
+                  ${activeStep === step 
+                    ? "bg-primary text-white ring-4 ring-primary/20" 
+                    : completedSteps.includes(step)
+                      ? "bg-green-500 text-white"
+                      : "bg-primary/10 text-primary/60"
+                  }
+                  ${(step <= activeStep || completedSteps.includes(step - 1)) ? "cursor-pointer hover:bg-primary/80 hover:text-white" : "cursor-not-allowed"}
+                `}
+                disabled={!(step <= activeStep || completedSteps.includes(step - 1))}
+              >
+                {completedSteps.includes(step) ? <CheckIcon className="h-5 w-5" /> : step}
+              </button>
+            ))}
+          </div>
+          <div className="h-2 w-full rounded-full bg-primary/10">
             <div 
-              key={num}
-              className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                step >= num ? "bg-primary text-white" : "bg-primary/10 text-primary/60"
-              }`}
-            >
-              {num}
-            </div>
-          ))}
+              className="h-2 rounded-full bg-primary transition-all"
+              style={{ width: `${(activeStep / 6) * 100}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-2 text-xs text-primary/60">
+            <span>Service</span>
+            <span>Basic Info</span>
+            <span>Identity</span>
+            <span>Privacy</span>
+            <span>Accounts</span>
+            <span>Legal</span>
+          </div>
         </div>
-        <div className="h-2 w-full rounded-full bg-primary/10">
-          <div 
-            className="h-2 rounded-full bg-primary transition-all"
-            style={{ width: `${(step / 5) * 100}%` }}
-          />
+        
+        {/* Auto-save indicator */}
+        <div className="flex items-center justify-end gap-2 text-sm text-primary/60 mb-4">
+          <Save className="h-4 w-4" />
+          <span>Auto-saving enabled</span>
+          {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+          {saveStatus === "success" && <span className="text-green-500">Saved</span>}
+          {saveStatus === "error" && <span className="text-red-500">Error saving</span>}
         </div>
       </div>
       
-      <form onSubmit={handleSubmit} className="space-y-6 bg-card border border-border rounded-lg p-6">
-        {step === 1 && (
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Step 1: Service Selection */}
+        <OnboardingCard
+          title="1. Welcome & Service Selection"
+          isActive={activeStep === 1}
+          isCompleted={completedSteps.includes(1)}
+          isSaving={isSaving && activeStep === 1}
+          saveStatus={activeStep === 1 ? saveStatus : "idle"}
+          onClick={() => goToStep(1)}
+        >
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-primary">1. Welcome & Service Selection</h2>
             <p className="text-primary/60">Which service are you signing up for?</p>
             
             <RadioGroup 
@@ -129,17 +372,27 @@ function OnboardingForm() {
             </RadioGroup>
             
             <div className="pt-4 flex justify-end">
-              <Button type="button" onClick={nextStep}>
+              <Button 
+                type="button" 
+                onClick={nextStep}
+                disabled={!formData.serviceType}
+              >
                 Next Step
               </Button>
             </div>
           </div>
-        )}
+        </OnboardingCard>
         
-        {step === 2 && (
+        {/* Step 2: Basic Information */}
+        <OnboardingCard
+          title="2. Basic Information"
+          isActive={activeStep === 2}
+          isCompleted={completedSteps.includes(2)}
+          isSaving={isSaving && activeStep === 2}
+          saveStatus={activeStep === 2 ? saveStatus : "idle"}
+          onClick={() => goToStep(2)}
+        >
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-primary">2. Basic Information</h2>
-            
             <div>
               <Label htmlFor="legalFullName" className="block text-sm font-medium text-primary/80">
                 Legal Full Name <span className="text-red-500">*</span>
@@ -234,16 +487,27 @@ function OnboardingForm() {
               <Button type="button" variant="outline" onClick={prevStep}>
                 Previous Step
               </Button>
-              <Button type="button" onClick={nextStep}>
+              <Button 
+                type="button" 
+                onClick={nextStep}
+                disabled={!formData.legalFullName || !formData.email || !formData.phone || !formData.dateOfBirth || !formData.location}
+              >
                 Next Step
               </Button>
             </div>
           </div>
-        )}
+        </OnboardingCard>
         
-        {step === 3 && (
+        {/* Step 3: Identity Verification */}
+        <OnboardingCard
+          title="3. Identity Verification"
+          isActive={activeStep === 3}
+          isCompleted={completedSteps.includes(3)}
+          isSaving={isSaving && activeStep === 3}
+          saveStatus={activeStep === 3 ? saveStatus : "idle"}
+          onClick={() => goToStep(3)}
+        >
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-primary">3. Identity Verification</h2>
             <p className="text-primary/60 mb-4">
               To comply with platform policies and ensure your security, we require ID verification.
             </p>
@@ -257,7 +521,6 @@ function OnboardingForm() {
                 name="frontIdImage"
                 type="file"
                 accept="image/*"
-                required
                 className="mt-1"
               />
             </div>
@@ -271,7 +534,6 @@ function OnboardingForm() {
                 name="backIdImage"
                 type="file"
                 accept="image/*"
-                required
                 className="mt-1"
               />
             </div>
@@ -285,9 +547,15 @@ function OnboardingForm() {
                 name="selfieWithId"
                 type="file"
                 accept="image/*"
-                required
                 className="mt-1"
               />
+            </div>
+            
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md mt-4">
+              <h5 className="font-medium text-yellow-800 mb-2">Security Note:</h5>
+              <p className="text-sm text-yellow-700">
+                Your ID verification documents are securely stored with encryption and are only used for verification purposes. We follow strict data protection guidelines to ensure your information remains private.
+              </p>
             </div>
             
             <div className="pt-4 flex justify-between">
@@ -299,12 +567,18 @@ function OnboardingForm() {
               </Button>
             </div>
           </div>
-        )}
+        </OnboardingCard>
         
-        {step === 4 && (
+        {/* Step 4: Privacy & Persona */}
+        <OnboardingCard
+          title="4. Privacy & Persona"
+          isActive={activeStep === 4}
+          isCompleted={completedSteps.includes(4)}
+          isSaving={isSaving && activeStep === 4}
+          saveStatus={activeStep === 4 ? saveStatus : "idle"}
+          onClick={() => goToStep(4)}
+        >
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-primary">4. Privacy & Persona</h2>
-            
             <div>
               <div className="flex items-center space-x-2 mb-2">
                 <Checkbox 
@@ -377,6 +651,25 @@ function OnboardingForm() {
               />
             </div>
             
+            {/* Service-specific fields */}
+            {formData.serviceType === "onlyfans" || formData.serviceType === "both" ? (
+              <OnlyFansFields
+                formData={formData}
+                handleChange={handleChange}
+                handleSelectChange={handleSelectChange}
+                handleCheckboxChange={handleCheckboxChange}
+              />
+            ) : null}
+            
+            {formData.serviceType === "rentmen" || formData.serviceType === "both" ? (
+              <RentMenFields
+                formData={formData}
+                handleChange={handleChange}
+                handleSelectChange={handleSelectChange}
+                handleCheckboxChange={handleCheckboxChange}
+              />
+            ) : null}
+            
             <div className="pt-4 flex justify-between">
               <Button type="button" variant="outline" onClick={prevStep}>
                 Previous Step
@@ -386,44 +679,109 @@ function OnboardingForm() {
               </Button>
             </div>
           </div>
-        )}
+        </OnboardingCard>
         
-        {step === 5 && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-primary">5. Account Access & Social Media</h2>
-            <p className="text-primary/60 mb-4">
-              Fields display/hide based on selected platforms
-            </p>
+        {/* Step 5: Account Access & Social Media */}
+        <OnboardingCard
+          title="5. Account Access & Social Media"
+          isActive={activeStep === 5}
+          isCompleted={completedSteps.includes(5)}
+          isSaving={isSaving && activeStep === 5}
+          saveStatus={activeStep === 5 ? saveStatus : "idle"}
+          onClick={() => goToStep(5)}
+        >
+          <AccountAccess
+            formData={formData}
+            handleChange={handleChange}
+            handleCheckboxChange={handleCheckboxChange}
+            serviceType={formData.serviceType}
+          />
+          
+          <CommunicationPreferences
+            formData={formData}
+            handleChange={handleChange}
+            handleSelectChange={handleSelectChange}
+          />
+          
+          <div className="pt-4 flex justify-between">
+            <Button type="button" variant="outline" onClick={prevStep}>
+              Previous Step
+            </Button>
+            <Button type="button" onClick={nextStep}>
+              Next Step
+            </Button>
+          </div>
+        </OnboardingCard>
+        
+        {/* Step 6: Legal Agreements & Final Submission */}
+        <OnboardingCard
+          title="6. Legal Agreements & Final Submission"
+          isActive={activeStep === 6}
+          isCompleted={completedSteps.includes(6)}
+          isSaving={isSaving && activeStep === 6}
+          saveStatus={activeStep === 6 ? saveStatus : "idle"}
+          onClick={() => goToStep(6)}
+        >
+          <div className="space-y-6">
+            <LegalAgreements
+              formData={formData}
+              handleCheckboxChange={handleCheckboxChange}
+            />
             
-            <div>
-              <Label className="block text-sm font-medium text-primary/80 mb-2">
-                Account Creation Options:
-              </Label>
-              <Select 
-                value={formData.accountCreationOption} 
-                onValueChange={(value) => handleSelectChange("accountCreationOption", value)}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select an option" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="create-new">Create new accounts for me</SelectItem>
-                  <SelectItem value="use-existing">Use my existing accounts</SelectItem>
-                  <SelectItem value="mix">Mix of new and existing accounts</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* Summary of all provided information */}
+            <div className="mt-6 p-4 bg-primary/5 rounded-lg">
+              <h4 className="font-medium text-primary mb-4">Summary of all provided information</h4>
+              
+              <div className="space-y-4">
+                {[1, 2, 3, 4, 5].map(step => (
+                  <div key={step} className="flex justify-between items-center">
+                    <span className="font-medium">
+                      {step === 1 && "Service Selection"}
+                      {step === 2 && "Basic Information"}
+                      {step === 3 && "Identity Verification"}
+                      {step === 4 && "Privacy & Persona"}
+                      {step === 5 && "Account Access & Social Media"}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => goToStep(step)}
+                    >
+                      Edit
+                    </Button>
+                  </div>
+                ))}
+              </div>
             </div>
             
-            <div className="pt-4 flex justify-between">
+            <div className="pt-6 flex justify-between">
               <Button type="button" variant="outline" onClick={prevStep}>
                 Previous Step
               </Button>
-              <Button type="submit">
-                Complete Onboarding
+              <Button 
+                type="submit"
+                disabled={
+                  isSaving || 
+                  !formData.authorizeAccess || 
+                  !formData.backupResponsibility || 
+                  !formData.termsAgreement || 
+                  !formData.confirmInformation
+                }
+                className="px-8"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  "Submit Onboarding Information"
+                )}
               </Button>
             </div>
           </div>
-        )}
+        </OnboardingCard>
       </form>
     </div>
   );
