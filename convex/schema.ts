@@ -180,7 +180,7 @@ const schema = defineSchema({
     .index("email", ["email"])
     .index("customerId", ["customerId"])
     .index("role", ["role"]),
-  
+
   // Client profiles for storing detailed client information
   clientProfiles: defineTable({
     userId: v.id("users"),
@@ -216,17 +216,23 @@ const schema = defineSchema({
     onboardingApprovedBy: v.optional(v.id("users")),
     // Unique identifier for the client
     uniqueIdentifier: v.string(),
+    // Add these missing fields
+    lastSaved: v.optional(v.number()),
+    sensitiveData: v.optional(v.any()),
+    serviceData: v.optional(v.any()),
+    communicationPreferences: v.optional(v.any()),
+    legalAgreements: v.optional(v.any()),
   })
     .index("userId", ["userId"])
     .index("uniqueIdentifier", ["uniqueIdentifier"])
     .index("serviceType", ["serviceType"]),
-  
+
   // Appointments for scheduling between admin and clients
   appointments: defineTable({
     // Who created the appointment (admin)
     createdBy: v.id("users"),
     // Client the appointment is for
-    clientId: v.id("users"),
+    clientId: v.optional(v.id("users")), // Make optional to fix the error
     // Appointment details
     appointmentType: appointmentTypeValidator,
     locationAddress: v.optional(v.string()),
@@ -236,27 +242,28 @@ const schema = defineSchema({
     durationDetails: v.optional(v.string()), // For "other" duration
     services: v.optional(v.string()), // Services to be provided
     rate: v.number(), // Agreed rate/price
-    
+
     // Booking contact information
     contactName: v.optional(v.string()),
     contactPhone: v.optional(v.string()),
     contactEmail: v.optional(v.string()),
-    
+
     // Screening information
     screeningStatus: v.optional(v.string()),
     screeningNotes: v.optional(v.string()),
-    
+
     // Notes
     internalNotes: v.optional(v.string()), // Admin only
     clientNotes: v.optional(v.string()), // Visible to client
-    
+
     // Status tracking
     status: appointmentStatusValidator,
-    
+    statusNotes: v.optional(v.string()), // Add this field
+
     // Response tracking
     respondedAt: v.optional(v.number()),
     responseNotes: v.optional(v.string()),
-    
+
     // Metadata
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -264,7 +271,18 @@ const schema = defineSchema({
     .index("clientId", ["clientId"])
     .index("createdBy", ["createdBy"])
     .index("status", ["status"]),
-  
+
+  // Add the missing appointmentAttachments table
+  appointmentAttachments: defineTable({
+    appointmentId: v.id("appointments"),
+    storageId: v.id("_storage"),
+    fileName: v.string(),
+    fileType: v.string(),
+    description: v.optional(v.string()),
+    uploadedAt: v.number(),
+  })
+    .index("appointmentId", ["appointmentId"]),
+
   // Content for client uploads and admin moderation
   content: defineTable({
     // Who uploaded the content
@@ -288,8 +306,8 @@ const schema = defineSchema({
     .index("uploadedBy", ["uploadedBy"])
     .index("status", ["status"])
     .index("contentType", ["contentType"]),
-  
-  // ... existing plans table ...
+
+  // Plans table
   plans: defineTable({
     key: planKeyValidator,
     stripeId: v.string(),
@@ -302,8 +320,8 @@ const schema = defineSchema({
   })
     .index("key", ["key"])
     .index("stripeId", ["stripeId"]),
-  
-  // ... existing subscriptions table ...
+
+  // Subscriptions table
   subscriptions: defineTable({
     userId: v.id("users"),
     planId: v.id("plans"),

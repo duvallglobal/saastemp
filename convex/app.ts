@@ -1,11 +1,11 @@
 import { internal } from "@cvx/_generated/api";
 import { mutation, query } from "@cvx/_generated/server";
 import { auth } from "@cvx/auth";
-import { 
-  currencyValidator, 
-  PLANS, 
-  ROLES, 
-  ONBOARDING_STATUS, 
+import {
+  currencyValidator,
+  PLANS,
+  ROLES,
+  ONBOARDING_STATUS,
   APPOINTMENT_STATUS,
   appointmentTypeValidator,
   serviceTypeValidator,
@@ -45,9 +45,9 @@ export const getCurrentUser = query({
       subscription:
         subscription && plan
           ? {
-              ...subscription,
-              planKey: plan.key,
-            }
+            ...subscription,
+            planKey: plan.key,
+          }
           : undefined,
     };
   },
@@ -103,7 +103,7 @@ export const setUserRole = mutation({
   handler: async (ctx, args) => {
     // Only admins can set roles
     await requireAdmin(ctx);
-    
+
     // Update the user's role
     await ctx.db.patch(args.userId, { role: args.role });
   },
@@ -113,54 +113,54 @@ export const createAppointment = mutation({
   args: {
     // 1. Client Selection
     clientId: v.id("users"),
-    
+
     // 2. Appointment Type
     appointmentType: appointmentTypeValidator,
-    
+
     // 3. Location Address (Conditional)
     locationAddress: v.optional(v.string()),
-    
+
     // 4. Appointment Date
     appointmentDate: v.string(),
-    
+
     // 5. Start Time
     startTime: v.string(),
-    
+
     // 6. Duration
     duration: v.string(),
     durationDetails: v.optional(v.string()),
-    
+
     // 7. Services to be Provided
     services: v.optional(v.string()),
-    
+
     // 8. Agreed Rate/Price
     rate: v.number(),
-    
+
     // 9. Booking Contact Name
     contactName: v.optional(v.string()),
-    
+
     // 10. Booking Contact Phone
     contactPhone: v.optional(v.string()),
-    
+
     // 11. Booking Contact Email
     contactEmail: v.optional(v.string()),
-    
+
     // 12. Screening Status
     screeningStatus: v.optional(v.string()),
-    
+
     // 13. Screening Notes
     screeningNotes: v.optional(v.string()),
-    
+
     // 15. Internal Notes
     internalNotes: v.optional(v.string()),
-    
+
     // 16. Notes for Client
     clientNotes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Only admins can create appointments
     const { user: adminUser } = await requireAdmin(ctx);
-    
+
     // Create the appointment
     const appointmentId = await ctx.db.insert("appointments", {
       createdBy: adminUser._id,
@@ -184,7 +184,7 @@ export const createAppointment = mutation({
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
-    
+
     return appointmentId;
   },
 });
@@ -198,19 +198,19 @@ export const respondToAppointment = mutation({
   handler: async (ctx, args) => {
     // Only clients can respond to appointments
     const { user: clientUser } = await requireClient(ctx);
-    
+
     // Get the appointment
     const appointment = await ctx.db.get(args.appointmentId);
-    
+
     if (!appointment) {
       throw new Error("Appointment not found");
     }
-    
+
     // Verify that the appointment belongs to this client
     if (appointment.clientId !== clientUser._id) {
       throw new Error("Not authorized to respond to this appointment");
     }
-    
+
     // Update the appointment
     await ctx.db.patch(args.appointmentId, {
       status: args.approved ? APPOINTMENT_STATUS.APPROVED : APPOINTMENT_STATUS.REJECTED,
@@ -225,25 +225,25 @@ export const submitClientOnboarding = mutation({
   args: {
     // Service Selection
     serviceType: serviceTypeValidator,
-    
+
     // Basic Information
     legalFullName: v.string(),
     preferredName: v.optional(v.string()),
     dateOfBirth: v.string(),
     phone: v.string(),
     location: v.string(),
-    
+
     // Identity Verification - we'll handle file uploads separately
-    
+
     // Privacy & Persona
     hasOnlinePersona: v.boolean(),
     stageNames: v.optional(v.string()),
     facialVisibility: facialVisibilityValidator,
     privacyConcerns: v.optional(v.string()),
-    
+
     // Account Access
     accountCreationOption: v.optional(v.string()),
-    
+
     // Additional fields
     address: v.optional(v.string()),
     city: v.optional(v.string()),
@@ -259,28 +259,28 @@ export const submitClientOnboarding = mutation({
     if (!userId) {
       throw new Error("Not authenticated");
     }
-    
+
     const user = await ctx.db.get(userId);
     if (!user) {
       throw new Error("User not found");
     }
-    
+
     // Update the user's service type and role
     await ctx.db.patch(userId, {
       role: ROLES.CLIENT,
       serviceType: args.serviceType,
       onboardingStatus: ONBOARDING_STATUS.COMPLETED,
     });
-    
+
     // Generate a unique identifier for the client
     const uniqueIdentifier = `client-${Math.random().toString(36).substring(2, 15)}`;
-    
+
     // Create or update the client profile
     const existingProfile = await ctx.db
       .query("clientProfiles")
       .withIndex("userId", (q) => q.eq("userId", userId))
       .unique();
-    
+
     if (existingProfile) {
       // Update existing profile
       await ctx.db.patch(existingProfile._id, {
@@ -338,23 +338,23 @@ export const approveClientOnboarding = mutation({
   handler: async (ctx, args) => {
     // Only admins can approve onboarding
     const { user: adminUser } = await requireAdmin(ctx);
-    
+
     // Get the client profile
     const clientProfile = await ctx.db
       .query("clientProfiles")
       .withIndex("userId", (q) => q.eq("userId", args.clientId))
       .unique();
-    
+
     if (!clientProfile) {
       throw new Error("Client profile not found");
     }
-    
+
     // Update the client profile
     await ctx.db.patch(clientProfile._id, {
       onboardingApprovedAt: Date.now(),
       onboardingApprovedBy: adminUser._id,
     });
-    
+
     // Update the user's onboarding status
     await ctx.db.patch(args.clientId, {
       onboardingStatus: ONBOARDING_STATUS.APPROVED,
@@ -426,33 +426,33 @@ export const getClientAppointments = query({
   handler: async (ctx, args) => {
     // Get the current user
     const { user } = await requireClient(ctx);
-    
+
     // Query appointments
     let appointmentsQuery = ctx.db
       .query("appointments")
       .withIndex("clientId", (q) => q.eq("clientId", user._id));
-    
+
     // Filter by status if provided
     if (args.status) {
-      appointmentsQuery = appointmentsQuery.filter((q) => 
+      appointmentsQuery = appointmentsQuery.filter((q) =>
         q.eq(q.field("status"), args.status)
       );
     }
-    
+
     // Get the appointments
     const appointments = await appointmentsQuery.collect();
-    
+
     // Get the admin users who created the appointments
     const adminUsers = await asyncMap(
       [...new Set(appointments.map((a) => a.createdBy))],
       (adminId) => ctx.db.get(adminId)
     );
-    
+
     // Map admin users by ID for easy lookup
     const adminMap = new Map(
       adminUsers.filter(Boolean).map((admin) => [admin!._id, admin])
     );
-    
+
     // Return appointments with admin info
     return appointments.map((appointment) => ({
       ...appointment,
@@ -469,36 +469,58 @@ export const getAdminAppointments = query({
   handler: async (ctx, args) => {
     // Only admins can view all appointments
     await requireAdmin(ctx);
-    
+
     // Start with base query
-    let appointmentsQuery = ctx.db.query("appointments");
-    
+    let appointmentsQuery;
+
     // Filter by client if provided
     if (args.clientId) {
-      appointmentsQuery = appointmentsQuery.withIndex("clientId", (q) => 
-        q.eq("clientId", args.clientId)
-      );
+      appointmentsQuery = ctx.db
+        .query("appointments")
+      export const getClientAppointments = query({
+        args: {
+          clientId: v.id("users"), // Remove optional to fix the error
+        },
+        handler: async (ctx, args) => {
+          const { userId, user } = await requireAuth(ctx);
+
+          // Check permissions
+          if (user.role !== ROLES.ADMIN && userId !== args.clientId) {
+            throw new Error("Not authorized to view these appointments");
+          }
+
+          const appointments = await ctx.db
+            .query("appointments")
+            .withIndex("clientId", (q) => q.eq("clientId", args.clientId))
+            .collect();
+
+          return appointments;
+        },
+        });
+        .withIndex("clientId", (q) => q.eq("clientId", args.clientId));
+    } else {
+      appointmentsQuery = ctx.db.query("appointments");
     }
-    
+
     // Filter by status if provided
     if (args.status) {
-      appointmentsQuery = appointmentsQuery.filter((q) => 
+      appointmentsQuery = appointmentsQuery.filter((q) =>
         q.eq(q.field("status"), args.status)
       );
     }
-    
+
     // Get the appointments
     const appointments = await appointmentsQuery.collect();
-    
+
     // Get all client users
     const clientIds = [...new Set(appointments.map((a) => a.clientId))];
     const clients = await asyncMap(clientIds, (clientId) => ctx.db.get(clientId));
-    
+
     // Map clients by ID for easy lookup
     const clientMap = new Map(
       clients.filter(Boolean).map((client) => [client!._id, client])
     );
-    
+
     // Return appointments with client info
     return appointments.map((appointment) => ({
       ...appointment,
@@ -552,25 +574,25 @@ export const submitClientOnboardingPartial = mutation({
   args: {
     // Service Selection
     serviceType: v.optional(serviceTypeValidator),
-    
+
     // Basic Information
     legalFullName: v.optional(v.string()),
     preferredName: v.optional(v.string()),
     dateOfBirth: v.optional(v.string()),
     phone: v.optional(v.string()),
     location: v.optional(v.string()),
-    
+
     // Privacy & Persona
     hasOnlinePersona: v.optional(v.boolean()),
     stageNames: v.optional(v.string()),
     facialVisibility: v.optional(facialVisibilityValidator),
     privacyConcerns: v.optional(v.string()),
-    
+
     // Account Access
     accountCreationOption: v.optional(v.string()),
     needHelpCreating: v.optional(v.boolean()),
     doNotNeedAccountManagement: v.optional(v.boolean()),
-    
+
     // OnlyFans specific
     ofUsername: v.optional(v.string()),
     ofEmail: v.optional(v.string()),
@@ -596,7 +618,7 @@ export const submitClientOnboardingPartial = mutation({
     ofBrandDescription: v.optional(v.string()),
     ofDoNotSay: v.optional(v.string()),
     ofContentEditor: v.optional(v.string()),
-    
+
     // Rent.Men specific
     rmUsername: v.optional(v.string()),
     rmEmail: v.optional(v.string()),
@@ -626,18 +648,18 @@ export const submitClientOnboardingPartial = mutation({
     rmRepeatClients: v.optional(v.string()),
     rmPaymentMethod: v.optional(v.string()),
     rmDepositRequirements: v.optional(v.string()),
-    
+
     // Communication preferences
     communicationMethod: v.optional(v.string()),
     bestContactMethod: v.optional(v.string()),
     safetyRequirements: v.optional(v.string()),
-    
+
     // Legal agreements
     authorizeAccess: v.optional(v.boolean()),
     backupResponsibility: v.optional(v.boolean()),
     termsAgreement: v.optional(v.boolean()),
     confirmInformation: v.optional(v.boolean()),
-    
+
     // Social media
     igUsername: v.optional(v.string()),
     igEmail: v.optional(v.string()),
@@ -647,11 +669,12 @@ export const submitClientOnboardingPartial = mutation({
     ttPassword: v.optional(v.string()),
     twUsername: v.optional(v.string()),
     twEmail: v.optional(v.string()),
+    twPassword: v.optional(v.string()),
     additionalPlatformName: v.optional(v.string()),
     additionalPlatformUsername: v.optional(v.string()),
     additionalPlatformEmail: v.optional(v.string()),
     additionalPlatformPassword: v.optional(v.string()),
-    
+
     // Step tracking
     stepCompleted: v.optional(v.number()),
     isComplete: v.optional(v.boolean()),
@@ -662,40 +685,40 @@ export const submitClientOnboardingPartial = mutation({
     if (!userId) {
       throw new Error("Not authenticated");
     }
-    
+
     const user = await ctx.db.get(userId);
     if (!user) {
       throw new Error("User not found");
     }
-    
+
     // Update user role and onboarding status if not already set
     if (!user.role) {
       await ctx.db.patch(userId, {
         role: ROLES.CLIENT,
       });
     }
-    
+
     // Update onboarding status based on step completed
     if (args.stepCompleted) {
       await ctx.db.patch(userId, {
         onboardingStatus: ONBOARDING_STATUS.IN_PROGRESS,
       });
     }
-    
+
     // If onboarding is complete, update status
     if (args.isComplete) {
       await ctx.db.patch(userId, {
         onboardingStatus: ONBOARDING_STATUS.COMPLETED,
       });
     }
-    
+
     // Update service type if provided
     if (args.serviceType) {
       await ctx.db.patch(userId, {
         serviceType: args.serviceType,
       });
     }
-    
+
     // Extract location components if provided
     let city, state, country;
     if (args.location) {
@@ -704,13 +727,13 @@ export const submitClientOnboardingPartial = mutation({
       if (locationParts.length >= 2) state = locationParts[1];
       if (locationParts.length >= 3) country = locationParts[2];
     }
-    
+
     // Check if client profile already exists
     const existingProfile = await ctx.db
       .query("clientProfiles")
       .withIndex("userId", (q) => q.eq("userId", userId))
       .unique();
-    
+
     // Prepare profile data
     const profileData: any = {
       // Only include fields that are provided
@@ -727,11 +750,11 @@ export const submitClientOnboardingPartial = mutation({
       ...(args.facialVisibility && { facialVisibility: args.facialVisibility }),
       ...(args.privacyConcerns && { privacyConcerns: args.privacyConcerns }),
     };
-    
+
     // Store sensitive information securely (in a real implementation, these would be encrypted)
     // For this demo, we'll just store them in a JSON field
     const sensitiveData: any = {};
-    
+
     // Add account credentials if provided
     if (args.ofUsername || args.ofEmail || args.ofPassword) {
       sensitiveData.onlyfans = {
@@ -740,7 +763,7 @@ export const submitClientOnboardingPartial = mutation({
         password: args.ofPassword,
       };
     }
-    
+
     if (args.rmUsername || args.rmEmail || args.rmPassword) {
       sensitiveData.rentmen = {
         username: args.rmUsername,
@@ -748,10 +771,10 @@ export const submitClientOnboardingPartial = mutation({
         password: args.rmPassword,
       };
     }
-    
+
     // Add social media credentials
     const socialMedia: any = {};
-    
+
     if (args.igUsername || args.igEmail || args.igPassword) {
       socialMedia.instagram = {
         username: args.igUsername,
@@ -759,7 +782,7 @@ export const submitClientOnboardingPartial = mutation({
         password: args.igPassword,
       };
     }
-    
+
     if (args.ttUsername || args.ttEmail || args.ttPassword) {
       socialMedia.tiktok = {
         username: args.ttUsername,
@@ -767,7 +790,7 @@ export const submitClientOnboardingPartial = mutation({
         password: args.ttPassword,
       };
     }
-    
+
     if (args.twUsername || args.twEmail || args.twPassword) {
       socialMedia.twitter = {
         username: args.twUsername,
@@ -775,11 +798,11 @@ export const submitClientOnboardingPartial = mutation({
         password: args.twPassword,
       };
     }
-    
+
     if (Object.keys(socialMedia).length > 0) {
       sensitiveData.socialMedia = socialMedia;
     }
-    
+
     // Add additional platform if provided
     if (args.additionalPlatformName) {
       sensitiveData.additionalPlatform = {
@@ -789,10 +812,10 @@ export const submitClientOnboardingPartial = mutation({
         password: args.additionalPlatformPassword,
       };
     }
-    
+
     // Store service-specific data
     const serviceData: any = {};
-    
+
     // OnlyFans specific data
     if (args.serviceType === "onlyfans" || args.serviceType === "both") {
       serviceData.onlyfans = {
@@ -823,7 +846,7 @@ export const submitClientOnboardingPartial = mutation({
         contentEditor: args.ofContentEditor,
       };
     }
-    
+
     // Rent.Men specific data
     if (args.serviceType === "rentmen" || args.serviceType === "both") {
       serviceData.rentmen = {
@@ -866,14 +889,14 @@ export const submitClientOnboardingPartial = mutation({
         depositRequirements: args.rmDepositRequirements,
       };
     }
-    
+
     // Communication preferences
     const communicationPrefs: any = {
       method: args.communicationMethod,
       bestContactMethod: args.bestContactMethod,
       safetyRequirements: args.safetyRequirements,
     };
-    
+
     // Legal agreements
     const legalAgreements: any = {
       authorizeAccess: args.authorizeAccess,
@@ -881,31 +904,31 @@ export const submitClientOnboardingPartial = mutation({
       termsAgreement: args.termsAgreement,
       confirmInformation: args.confirmInformation,
     };
-    
+
     // Add metadata fields to profile data
     if (Object.keys(sensitiveData).length > 0) {
       profileData.sensitiveData = sensitiveData;
     }
-    
+
     if (Object.keys(serviceData).length > 0) {
       profileData.serviceData = serviceData;
     }
-    
+
     if (Object.keys(communicationPrefs).length > 0) {
       profileData.communicationPreferences = communicationPrefs;
     }
-    
+
     if (Object.keys(legalAgreements).length > 0) {
       profileData.legalAgreements = legalAgreements;
     }
-    
+
     // Update last saved timestamp
     profileData.lastSaved = Date.now();
-    
+
     if (args.isComplete) {
       profileData.onboardingCompletedAt = Date.now();
     }
-    
+
     if (existingProfile) {
       // Update existing profile
       await ctx.db.patch(existingProfile._id, profileData);
@@ -918,7 +941,7 @@ export const submitClientOnboardingPartial = mutation({
         ...profileData,
       });
     }
-    
+
     return { success: true };
   },
 });
@@ -931,13 +954,13 @@ export const getClientProfile = query({
     if (!userId) {
       throw new Error("Not authenticated");
     }
-    
+
     // Get the client profile
     const profile = await ctx.db
       .query("clientProfiles")
       .withIndex("userId", (q) => q.eq("userId", userId))
       .unique();
-    
+
     return profile;
   },
 });
@@ -948,13 +971,180 @@ export const getClients = query({
   handler: async (ctx) => {
     // Only admins can view clients
     await requireAdmin(ctx);
-    
+
     // Get all client users
     const clientUsers = await ctx.db
       .query("users")
       .withIndex("role", (q) => q.eq("role", ROLES.CLIENT))
       .collect();
-    
+
     return clientUsers;
+  },
+});
+
+// Function to get client profiles for admin
+export const getClientProfiles = query({
+  args: {},
+  handler: async (ctx) => {
+    // Only admins can view client profiles
+    await requireAdmin(ctx);
+
+    // Get all client profiles
+    const clientProfiles = await ctx.db
+      .query("clientProfiles")
+      .collect();
+
+    // Get associated user data
+    const userIds = clientProfiles.map(profile => profile.userId);
+    const users = await asyncMap(userIds, (userId) => ctx.db.get(userId));
+
+    // Map users by ID for easy lookup
+    const userMap = new Map(
+      users.filter(Boolean).map((user) => [user!._id, user])
+    );
+
+    // Return profiles with user info
+    return clientProfiles.map((profile) => ({
+      ...profile,
+      user: userMap.get(profile.userId),
+    }));
+  },
+});
+
+// Function to update appointment status
+export const updateAppointmentStatus = mutation({
+  args: {
+    appointmentId: v.id("appointments"),
+    status: v.string(),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Only admins can update appointment status
+    await requireAdmin(ctx);
+
+    // Get the appointment
+    const appointment = await ctx.db.get(args.appointmentId);
+
+    if (!appointment) {
+      throw new Error("Appointment not found");
+    }
+
+    // Update the appointment
+    await ctx.db.patch(args.appointmentId, {
+      status: args.status,
+      statusNotes: args.notes,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+// Function to upload appointment attachments
+export const uploadAppointmentAttachment = mutation({
+  args: {
+    appointmentId: v.id("appointments"),
+    storageId: v.id("_storage"),
+    fileName: v.string(),
+    fileType: v.string(),
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Only admins can upload attachments
+    await requireAdmin(ctx);
+
+    // Create attachment record
+    const attachmentId = await ctx.db.insert("appointmentAttachments", {
+      appointmentId: args.appointmentId,
+      storageId: args.storageId,
+      fileName: args.fileName,
+      fileType: args.fileType,
+      description: args.description,
+      uploadedAt: Date.now(),
+    });
+
+    return attachmentId;
+  },
+});
+
+// Function to get appointment attachments
+export const getAppointmentAttachments = query({
+  args: {
+    appointmentId: v.id("appointments"),
+  },
+  handler: async (ctx, args) => {
+    // Get current user
+    const userId = await auth.getUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Get the appointment to check permissions
+    const appointment = await ctx.db.get(args.appointmentId);
+    if (!appointment) {
+      throw new Error("Appointment not found");
+    }
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Check if user has permission to view attachments
+    const canView = user.role === ROLES.ADMIN || appointment.clientId === userId;
+    if (!canView) {
+      throw new Error("Not authorized to view attachments");
+    }
+
+    // Get attachments
+    const attachments = await ctx.db
+      .query("appointmentAttachments")
+      .withIndex("appointmentId", (q) => q.eq("appointmentId", args.appointmentId))
+      .collect();
+
+    // Get URLs for attachments
+    const attachmentsWithUrls = await asyncMap(attachments, async (attachment) => {
+      const url = await ctx.storage.getUrl(attachment.storageId);
+      return {
+        ...attachment,
+        url,
+      };
+    });
+
+    return attachmentsWithUrls;
+  },
+});
+
+// Function to delete appointment
+export const deleteAppointment = mutation({
+  args: {
+    appointmentId: v.id("appointments"),
+  },
+  handler: async (ctx, args) => {
+    // Only admins can delete appointments
+    await requireAdmin(ctx);
+
+    // Get the appointment
+    const appointment = await ctx.db.get(args.appointmentId);
+    if (!appointment) {
+      throw new Error("Appointment not found");
+    }
+
+    // Delete associated attachments
+    const attachments = await ctx.db
+      .query("appointmentAttachments")
+      .withIndex("appointmentId", (q) => q.eq("appointmentId", args.appointmentId))
+      .collect();
+
+    // Delete attachment records and files
+    await asyncMap(attachments, async (attachment) => {
+      await ctx.storage.delete(attachment.storageId);
+      await ctx.db.delete(attachment._id);
+    });
+
+    // Delete the appointment
+    await ctx.db.delete(args.appointmentId);
+
+    return { success: true };
   },
 });
